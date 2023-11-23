@@ -3,8 +3,9 @@ import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 
+from PyQt5.QtCore import QFileInfo
 from PyQt5.QtWidgets import (QApplication, QFileDialog, QLabel, QLineEdit,
-                             QMainWindow, QPushButton)
+                             QMainWindow, QMessageBox, QPushButton)
 
 
 class InstallerApp(QMainWindow):
@@ -17,7 +18,6 @@ class InstallerApp(QMainWindow):
         self.company_logo_path = None
         self.license_path = None
         self.readme_path = None
-        # self.output_path = os.path.join("/","Users", "jyot", "Desktop")
 
     def initUI(self):
         self.setWindowTitle("Python Installer Generator")
@@ -89,39 +89,38 @@ class InstallerApp(QMainWindow):
 
         if self.zip_file_path:
             self.package_button.setEnabled(True)
-            print("Selected Zip file:", self.zip_file_path)
     
     def select_app_icon(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         self.app_icon_path, _ = QFileDialog.getOpenFileName(self, "Select App Icon", "", "Icon Files (*.ico *.icns)", options=options)
 
-        if self.app_icon_path:
-            print("Selected App Icon:", self.app_icon_path)
+        # if self.app_icon_path:
+        #     print("Selected App Icon:", self.app_icon_path)
 
     def select_company_logo(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         self.company_logo_path, _ = QFileDialog.getOpenFileName(self, "Select Company Logo", "", "Image Files (*.png *.jpg *.jpeg *.gif *.bmp)", options=options)
 
-        if self.company_logo_path:
-            print("Selected Company Logo:", self.company_logo_path)
+        # if self.company_logo_path:
+        #     print("Selected Company Logo:", self.company_logo_path)
     
     def select_license_file(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         self.license_path, _ = QFileDialog.getOpenFileName(self, "Select License", "", "Text Files (*.txt *.rtf);;All Files (*)", options=options)
 
-        if self.license_path:
-            print("Selected License:", self.license_path)
+        # if self.license_path:
+        #     print("Selected License:", self.license_path)
     
     def select_readme_file(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         self.readme_path, _ = QFileDialog.getOpenFileName(self, "Select Readme", "", "HTML Files (*.html *.htm);;Text Files (*.txt);;All Files (*)", options=options)
 
-        if self.readme_path:
-            print("Selected Readme:", self.readme_path)
+        # if self.readme_path:
+        #     print("Selected Readme:", self.readme_path)
 
     
     def select_output_path(self):
@@ -130,8 +129,8 @@ class InstallerApp(QMainWindow):
 
         self.selected_output_path = QFileDialog.getExistingDirectory(self, "Select output Directory", options=options)
 
-        if self.selected_output_path:
-            print("Selected Output path:", self.selected_output_path)
+        # if self.selected_output_path:
+        #     print("Selected Output path:", self.selected_output_path)
 
 
     def installer_macos(self):
@@ -144,40 +143,52 @@ class InstallerApp(QMainWindow):
         company_logo_path = self.company_logo_path 
         license_file_path = self.license_path
         readme_file_path = self.readme_path
-        output_path = self.selected_output_path
+        output_path = self.selected_output_path if hasattr(self, 'selected_output_path') else None
         minimum_os = self.minimum_os_input.text()
         copyright_name = self.copyright_input.text()
 
-        # temp_dir = tempfile.mkdtemp()
-        # subprocess.run(f"pyinstaller {py_path}")
-        # Create an application bundle
-        # app_bundle_path = os.path.join(temp_dir, f"{app_name}.app")  # Replace with your app name
-        # Copy the company logo file to the application resources (for macOS)
-        # resources_path = os.path.join(app_bundle_path, "Contents", "Resources")
-        # os.makedirs(resources_path, exist_ok=True)
-        # shutil.copy(company_logo_path, resources_path)
+        file_name = QFileInfo(input_path).fileName()
+        folder_name = file_name.split(".")[0]
+        
+        if not input_path or not main_file:
+            QMessageBox.critical(self, "Error", "Please select a folder and specify the main Python file.", QMessageBox.Ok)
+            return
+        
+        temp_dir = "temp_unzip_folder"
+        unzip_command = f"unzip -q {input_path} -d {temp_dir}"
 
+        try:
+            subprocess.run(unzip_command, shell=True, check=True)
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
 
         command = [
             "pyinstaller", "--onefile", "--windowed",
             "--name", f"{app_name}",
             f"--osx-bundle-identifier={app_identifier}",
             f"--icon={app_icon_path}",
-            f"{main_file}"
+            f"{folder_name}/{main_file}"
         ]
-        print(command)
-        subprocess.run(command, cwd=input_path, check=True)
+
+        try:
+            subprocess.run(command, cwd=temp_dir, check=True)
+        except subprocess.CalledProcessError as e:    
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
 
         # to create folder with name of app
         dist_path = os.path.join(output_path, app_name)
         os.makedirs(dist_path, exist_ok=True)
 
-        shutil.copy(license_file_path, dist_path)
-        shutil.copy(readme_file_path, dist_path)
-
-        source_app_path = os.path.join(input_path,"dist",f"{app_name}.app")
-        dist_full_path = os.path.join(dist_path, os.path.basename(source_app_path))
-        shutil.copytree(source_app_path, dist_full_path)
+        try:
+            source_app_path = os.path.join(temp_dir,"dist",f"{app_name}.app")
+            dist_full_path = os.path.join(dist_path, os.path.basename(source_app_path))
+            shutil.copytree(source_app_path, dist_full_path)
+            shutil.copy(license_file_path, dist_path)
+            shutil.copy(readme_file_path, dist_path)
+            shutil.rmtree(temp_dir)
+            # print(f"Temporary directory '{temp_dir}' deleted successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
 
  
         dist_NameComponent_plist_path = os.path.join(dist_path, "NameComponent.plist")
@@ -192,9 +203,11 @@ class InstallerApp(QMainWindow):
             "--root", dist_full_path,
             dist_NameComponent_plist_path
         ]
-        print(command1)
-        subprocess.run(command1, check=True)
         
+        try:
+            subprocess.run(command1, check=True)
+        except subprocess.CalledProcessError as e:   
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
         
         command2 = [
             "pkgbuild",
@@ -206,8 +219,10 @@ class InstallerApp(QMainWindow):
             "--component-plist", dist_NameComponent_plist_path,
             dist_NameComponent_pkg_path
         ]
-        print(command2)
-        subprocess.run(command2, check=True)
+        try:
+            subprocess.run(command2, check=True)
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
 
         command3 = [
             "productbuild",
@@ -215,13 +230,14 @@ class InstallerApp(QMainWindow):
             "--package", dist_NameComponent_pkg_path,
             dist_distribution_plist_path
         ]
-        print(command3)
-        subprocess.run(command3, check=True)
+        try:
+            subprocess.run(command3, check=True)
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
 
-        xml_file_path = dist_distribution_plist_path
-
+        
         # Load the XML file
-        tree = ET.parse(xml_file_path)
+        tree = ET.parse(dist_distribution_plist_path)
         root = tree.getroot()
 
         title_element = ET.Element('title')
@@ -241,7 +257,7 @@ class InstallerApp(QMainWindow):
         background_element.set('alignment', 'bottomleft')
         root.append(background_element)
 
-        tree.write(xml_file_path)
+        tree.write(dist_distribution_plist_path)
 
         command4 = [
             "productbuild",
@@ -250,12 +266,11 @@ class InstallerApp(QMainWindow):
             "--package-path", dist_NameComponent_pkg_path,
             dist_distribution_pkg_path
         ]
-        print(command4)
         try:
             subprocess.run(command4, check=True)
-            print("Package build completed successfully.")
+            QMessageBox.information(self, "Success", "Package build completed successfully!", QMessageBox.Ok)
         except subprocess.CalledProcessError as e:
-            print(f"Error: {e}")
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
 
 def main():
     app = QApplication([])
