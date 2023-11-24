@@ -154,26 +154,72 @@ class InstallerApp(QMainWindow):
             QMessageBox.critical(self, "Error", "Please select a folder and specify the main Python file.", QMessageBox.Ok)
             return
         
-        temp_dir = "temp_unzip_folder"
+        temp_dir = os.path.join(output_path, "temp_unzip_folder")
+        os.makedirs(temp_dir, exist_ok=True)
+
         unzip_command = f"unzip -q {input_path} -d {temp_dir}"
+
+        main_python_file_path = os.path.join(temp_dir, folder_name, main_file)
 
         try:
             subprocess.run(unzip_command, shell=True, check=True)
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
-
-        command = [
+            return
+        
+        # create a .spec file
+        pyinstaller_cmd1 = [
             "pyinstaller", "--onefile", "--windowed",
             "--name", f"{app_name}",
             f"--osx-bundle-identifier={app_identifier}",
             f"--icon={app_icon_path}",
-            f"{folder_name}/{main_file}"
+            "--specpath", f"{temp_dir}", 
+            main_python_file_path
         ]
-
         try:
-            subprocess.run(command, cwd=temp_dir, check=True)
+            subprocess.run(pyinstaller_cmd1, check=True)
         except subprocess.CalledProcessError as e:    
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
+            return
+
+        # edit a .spec file
+        spec_file_path = os.path.join(temp_dir, f"{app_name}.spec")
+        with open(spec_file_path, 'r') as file:
+            existing_content = file.read()
+        
+
+        new_lines = f"""
+        version=f"{app_version}",
+        copyright=f"{copyright_name}",
+        """
+
+        # Find the position to insert new lines (after the hiddenimports line)
+        marker = 'exe,'
+        position = existing_content.find(marker) + len(marker)
+
+        # Combine existing content and new lines
+        updated_content = (
+            existing_content[:position]
+            + '\n'
+            + new_lines
+            + existing_content[position:]
+        )
+
+        with open(spec_file_path, 'w') as file:
+            file.write(updated_content)
+
+
+        # convert .spec to .app
+        pyinstaller_cmd2 = [
+            "pyinstaller", 
+            spec_file_path
+        ]
+        try:
+            subprocess.run(pyinstaller_cmd2, cwd=temp_dir, check=True)
+        except subprocess.CalledProcessError as e:    
+            QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
+            return
+
 
         # to create folder with name of app
         dist_path = os.path.join(output_path, app_name)
@@ -186,10 +232,9 @@ class InstallerApp(QMainWindow):
             shutil.copy(license_file_path, dist_path)
             shutil.copy(readme_file_path, dist_path)
             shutil.rmtree(temp_dir)
-            # print(f"Temporary directory '{temp_dir}' deleted successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
-
+            return
  
         dist_NameComponent_plist_path = os.path.join(dist_path, "NameComponent.plist")
         dist_NameComponent_pkg_path = os.path.join(dist_path, "NameComponent.pkg")
@@ -208,7 +253,8 @@ class InstallerApp(QMainWindow):
             subprocess.run(command1, check=True)
         except subprocess.CalledProcessError as e:   
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
-        
+            return
+            
         command2 = [
             "pkgbuild",
             "--root", dist_full_path,
@@ -223,7 +269,8 @@ class InstallerApp(QMainWindow):
             subprocess.run(command2, check=True)
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
-
+            return
+        
         command3 = [
             "productbuild",
             "--synthesize",
@@ -234,7 +281,7 @@ class InstallerApp(QMainWindow):
             subprocess.run(command3, check=True)
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
-
+            return
         
         # Load the XML file
         tree = ET.parse(dist_distribution_plist_path)
@@ -267,10 +314,12 @@ class InstallerApp(QMainWindow):
             dist_distribution_pkg_path
         ]
         try:
-            subprocess.run(command4, check=True)
+            subprocess.run(command4, cwd=dist_path, check=True)
             QMessageBox.information(self, "Success", "Package build completed successfully!", QMessageBox.Ok)
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
+            return
+
 
 def main():
     app = QApplication([])
