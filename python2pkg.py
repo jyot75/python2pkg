@@ -154,7 +154,7 @@ class InstallerApp(QMainWindow):
             QMessageBox.critical(self, "Error", "Please select a folder and specify the main Python file.", QMessageBox.Ok)
             return
         
-        temp_dir = os.path.join(output_path, "temp_unzip_folder")
+        temp_dir = os.path.join(os.getenv('TMPDIR'), "temp_py2pkg")
         os.makedirs(temp_dir, exist_ok=True)
 
         unzip_command = f"unzip -q {input_path} -d {temp_dir}"
@@ -222,7 +222,8 @@ class InstallerApp(QMainWindow):
 
 
         # to create folder with name of app
-        dist_path = os.path.join(output_path, app_name)
+        # dist_path = temp_dir
+        dist_path = os.path.join(output_path, f"Result_{app_name}")
         os.makedirs(dist_path, exist_ok=True)
 
         try:
@@ -316,6 +317,12 @@ class InstallerApp(QMainWindow):
         try:
             subprocess.run(command4, cwd=dist_path, check=True)
             QMessageBox.information(self, "Success", "Package build completed successfully!", QMessageBox.Ok)
+
+            for filename in os.listdir(dist_path):
+                file_path = os.path.join(dist_path, filename)
+                if os.path.isfile(file_path) and file_path!=dist_distribution_pkg_path:
+                    os.remove(file_path)
+
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self, "Error", "Something went wrong, try again.", QMessageBox.Ok)
             return
